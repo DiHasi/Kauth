@@ -1,0 +1,163 @@
+definitions:
+  contracts.LoginRequest:
+    properties:
+      password:
+        type: string
+      scope:
+        type: string
+      state:
+        type: string
+      username:
+        type: string
+    type: object
+  contracts.TokenRequest:
+    properties:
+      client_id:
+        type: string
+      client_secret:
+        type: string
+      code:
+        type: string
+      grant_type:
+        type: string
+      redirect_url:
+        type: string
+    type: object
+  handler.RegisterRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+info:
+  contact: {}
+paths:
+  /api/login:
+    post:
+      consumes:
+      - application/json
+      description: Login with username and password
+      parameters:
+      - description: Login request
+        in: body
+        name: loginRequest
+        required: true
+        schema:
+          $ref: '#/definitions/contracts.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+      summary: Login
+      tags:
+      - auth
+  /api/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user
+      parameters:
+      - description: Register request
+        in: body
+        name: registerRequest
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+      summary: Register
+      tags:
+      - auth
+  /oauth/authorize:
+    get:
+      consumes:
+      - application/json
+      description: Authorize the user
+      parameters:
+      - description: Response type
+        in: query
+        name: response_type
+        required: true
+        type: string
+      - description: Client ID
+        in: query
+        name: client_id
+        required: true
+        type: string
+      - description: Redirect URI
+        in: query
+        name: redirect_url
+        required: true
+        type: string
+      - description: Scope
+        in: query
+        name: scope
+        required: true
+        type: string
+      - description: State
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: Redirect
+          schema:
+            type: string
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+      summary: Authorize
+      tags:
+      - oauth
+  /oauth/token:
+    post:
+      consumes:
+      - application/json
+      description: Get access and refresh tokens
+      parameters:
+      - description: Token request
+        in: body
+        name: tokenRequest
+        required: true
+        schema:
+          $ref: '#/definitions/contracts.TokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Get Token
+      tags:
+      - oauth
+swagger: "2.0"

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer utilities {
+    @keyframes fluidGradient {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    .bg-fluid-gradient {
+        background: radial-gradient(circle at 10% 20%, rgba(255, 34, 144, 0.57), transparent),
+        radial-gradient(circle at 80% 80%, rgba(65, 105, 225, 0.4), transparent),
+        radial-gradient(circle at 50% 50%, rgba(0, 250, 154, 0.4), transparent),
+        radial-gradient(circle at 90% 10%, rgba(255, 165, 0, 0.7), transparent);
+        background-size: 200% 200%;
+        animation: fluidGradient 5s ease-in-out infinite;
+    }
+}
