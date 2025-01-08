@@ -3,7 +3,6 @@ package handler
 import (
 	_ "Kauth/docs"
 	"github.com/gorilla/mux"
-	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 type Handlers struct {
@@ -30,7 +29,7 @@ func (h *Handlers) InitRoutes() *mux.Router {
 	r.HandleFunc("/oauth/token", h.authHandler.token).Methods("POST")
 	//r.HandleFunc("/forward-auth/auth", h.authHandler.forwardAuth).Methods("GET")
 
-	r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
+	//r.PathPrefix("/swagger/").Handler(httpSwagger.WrapHandler)
 	r.PathPrefix("/").Handler(h.staticHandler)
 	return r
 }
