@@ -14,6 +14,14 @@ const redirect_uri = ref<string>(route.query.redirect_uri as string || '');
 // Состояние ошибки
 const errorMessage = ref<string>('');
 const visible = ref<boolean>(false);
+const domain = ref<string>('')
+
+onMounted(() => {
+  domain.value = getDomainFromUrl(redirect_uri.value);
+  useHead({
+    title: `Login - ${domain.value}`
+  });
+});
 
 // Показываем сообщение об ошибке
 const showError = (message: string) => {
@@ -25,11 +33,10 @@ const showError = (message: string) => {
   }, 3500);
 };
 
-// Получение домена из URL
 const getDomainFromUrl = (url: string): string => {
   try {
     const parsedUrl = new URL(url);
-    return parsedUrl.origin;
+    return parsedUrl.hostname;
   } catch (error) {
     console.error('Invalid URL:', error);
     return '';
@@ -80,7 +87,7 @@ const login = async () => {
 
   <!-- Форма авторизации -->
   <div
-      class="flex flex-col h-full *:w-full p-4 sm:p-0 *:sm:w-1/2 *:md:w-1/2 *:lg:w-1/3 justify-center items-center gap-6">
+      class="flex flex-col h-full *:w-full p-4 sm:p-0 *:sm:w-1/2 *:md:w-1/2 *:lg:w-1/4 justify-center items-center gap-6">
     <div class="text-center text-2xl">Login</div>
     <FloatLabel>
       <InputText id="username" v-model="username" class="w-full"/>

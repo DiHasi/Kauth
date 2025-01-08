@@ -23,8 +23,6 @@ type AuthService struct {
 }
 
 var ErrTokenExpired = errors.New("token expired")
-var ErrNoRefreshToken = errors.New("no refresh token")
-var ErrRefreshTokenNotEqual = errors.New("invalid refresh token")
 
 func NewAuthService(userRepo repository.UserRepository, secretKey string, redisClient *redis.Client) *AuthService {
 	return &AuthService{userRepo: userRepo, secretKey: secretKey, redisClient: redisClient}
@@ -133,15 +131,10 @@ func (s *AuthService) SaveAuthCode(userID int, code, scope string) error {
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return fmt.Errorf("ошибка сериализации данных: %w", err)
+		return errors.New("json marshal error")
 	}
 
 	return s.redisClient.Set(context.Background(), code, jsonData, expiry).Err()
-}
-
-func (s *AuthService) SaveRefreshToken(userID int, refreshToken string) error {
-	expiry := time.Hour * 24 * 7
-	return s.redisClient.Set(context.Background(), refreshToken, userID, expiry).Err()
 }
 
 func (s *AuthService) GenerateToken(userID int, scope string) (string, error) {
@@ -167,13 +160,11 @@ func (s *AuthService) GenerateToken(userID int, scope string) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": float64(userID),
 		"scope":   strings.Join(scopes, ","),
-		"exp":     time.Now().Add(time.Minute * 15).Unix(),
+		"exp":     time.Now().Add(time.Hour * 4).Unix(),
 	}
-	// TODO: fix it
+
 	for _, s := range scopes {
 		switch s {
-		case "email":
-			claims["email"] = user.Username
 		case "name":
 			claims["name"] = user.Username
 		}

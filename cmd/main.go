@@ -50,6 +50,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	configService := service.NewConfigService(db)
+	if err := configService.InitUsers(); err != nil {
+		log.Fatal("Failed to initialize users:", err)
+	}
+
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		log.Fatal(err)
 	}

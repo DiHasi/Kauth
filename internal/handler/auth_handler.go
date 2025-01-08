@@ -153,7 +153,6 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID, scope, err := h.authService.GetUserInfoByAuthCode(code)
-	log.Println(userID, scope)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
@@ -167,11 +166,12 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	err = json.NewEncoder(w).Encode(map[string]interface{}{
+	response := map[string]interface{}{
 		"access_token": accessToken,
 		"scope":        scope,
 		"token_type":   "bearer",
-	})
+	}
+	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
 		log.Println(err.Error())
 		return
@@ -179,8 +179,16 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) user(w http.ResponseWriter, r *http.Request) {
-	err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"email": "dihasi2",
+
+	token := r.Header.Get("Authorization")
+	user, _, err := h.authService.ValidateToken(token)
+	if err != nil {
+		log.Println(err.Error())
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(map[string]interface{}{
+		"name": user.ID,
 	})
 	if err != nil {
 		log.Println(err.Error())

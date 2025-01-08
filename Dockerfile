@@ -16,7 +16,6 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=api-build /app/server ./server
 COPY --from=frontend-build /frontend/.output/public ./web/dist
-COPY configs ./configs
 COPY migrations ./migrations
 
 EXPOSE ${PORT}
