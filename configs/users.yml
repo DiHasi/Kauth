@@ -1,6 +1,6 @@
 users:
   <USERNAME>:
-    password: <PASSWORD> # docker run --rm -it johnstarich/bcrypt -P
+    password: '<PASSWORD>' # docker run --rm -it johnstarich/bcrypt -P
     groups:
       - 'admins'
       - 'dev'
