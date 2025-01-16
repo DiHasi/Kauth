@@ -29,20 +29,6 @@ func NewAuthService(userRepo repository.UserRepository, redisClient *redis.Clien
 
 var ErrTokenExpired = errors.New("token expired")
 
-func (s *AuthService) Register(username, password string) error {
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
-
-	user := &models.User{
-		Username: username,
-		Password: string(hashedPassword),
-	}
-
-	return s.userRepo.Create(user)
-}
-
 func (s *AuthService) Login(username, password, scope string) (string, string, error) {
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
@@ -101,10 +87,6 @@ func (s *AuthService) ValidateToken(accessToken string) (*models.User, *jwt.MapC
 	userID := int(claims["user_id"].(float64))
 	user, err := s.userRepo.GetByID(userID)
 	return user, &claims, nil
-}
-
-func (s *AuthService) getClaimsRequiredClaims(token jwt.Token) (*jwt.Claims, error) {
-	return nil, nil
 }
 
 func (s *AuthService) GetUserInfoByAuthCode(code string) (int, string, error) {

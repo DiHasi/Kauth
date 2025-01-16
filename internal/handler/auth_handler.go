@@ -53,7 +53,7 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 			Secure:   true,
 			HttpOnly: true,
 			Path:     "/",
-			SameSite: http.SameSiteNoneMode,
+			SameSite: http.SameSiteLaxMode,
 		})
 		err = json.NewEncoder(w).Encode(map[string]string{})
 		return
