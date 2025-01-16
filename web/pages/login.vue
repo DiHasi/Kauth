@@ -10,6 +10,7 @@ const password = ref<string>('');
 const scope = ref<string>(route.query.scope as string || '');
 const state = ref<string>(route.query.state as string || '');
 const redirect_uri = ref<string>(route.query.redirect_uri as string || '');
+const cookie = ref<string>(route.query.cookie as string || '');
 
 // Состояние ошибки
 const errorMessage = ref<string>('');
@@ -72,7 +73,12 @@ const login = async () => {
       return;
     }
 
+    if(scope.value === "") {
+      window.location.href = `${redirect_uri.value}`;
+    }
+
     window.location.href = `${redirect_uri.value}?state=${state.value}&code=${data.code}`;
+
   } catch (error: any) {
     showError(error.message || 'An error occurred');
   }

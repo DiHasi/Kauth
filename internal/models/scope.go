@@ -6,6 +6,7 @@ const (
 	ScopeUsername Scope = "name"
 	ScopeID       Scope = "id"
 	ScopeEmail    Scope = "email"
+	ScopeGroups   Scope = "groups"
 )
 
 func GetAllScopes() []Scope {
@@ -13,5 +14,6 @@ func GetAllScopes() []Scope {
 		ScopeUsername,
 		ScopeID,
 		ScopeEmail,
+		ScopeGroups,
 	}
 }

@@ -17,16 +17,17 @@ import (
 )
 
 type AuthService struct {
-	userRepo    repository.UserRepository
-	redisClient *redis.Client
-	secretKey   string
+	userRepo         repository.UserRepository
+	redisClient      *redis.Client
+	cookieEncryption *CookieEncryptionService
+	secretKey        string
+}
+
+func NewAuthService(userRepo repository.UserRepository, redisClient *redis.Client, cookieEncryption *CookieEncryptionService, secretKey string) *AuthService {
+	return &AuthService{userRepo: userRepo, redisClient: redisClient, cookieEncryption: cookieEncryption, secretKey: secretKey}
 }
 
 var ErrTokenExpired = errors.New("token expired")
-
-func NewAuthService(userRepo repository.UserRepository, secretKey string, redisClient *redis.Client) *AuthService {
-	return &AuthService{userRepo: userRepo, secretKey: secretKey, redisClient: redisClient}
-}
 
 func (s *AuthService) Register(username, password string) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -42,28 +43,40 @@ func (s *AuthService) Register(username, password string) error {
 	return s.userRepo.Create(user)
 }
 
-func (s *AuthService) Login(username, password, scope string) (string, error) {
+func (s *AuthService) Login(username, password, scope string) (string, string, error) {
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+
+	if scope == "" {
+		cookie, err := s.cookieEncryption.Encrypt(
+			map[string]string{
+				username: user.Username,
+			})
+
+		if err != nil {
+			return "", "", err
+		}
+		return "", cookie, nil
 	}
 
 	code, err := s.GenerateCode()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	err = s.SaveAuthCode(user.ID, code, scope)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return code, nil
+	return code, "", nil
 }
 
 func (s *AuthService) ValidateToken(accessToken string) (*models.User, *jwt.MapClaims, error) {
@@ -73,7 +86,8 @@ func (s *AuthService) ValidateToken(accessToken string) (*models.User, *jwt.MapC
 		return []byte(s.secretKey), nil
 	})
 	if err != nil {
-		if err.(*jwt.ValidationError).Errors == jwt.ValidationErrorExpired {
+		var jwtErr *jwt.ValidationError
+		if errors.As(err, &jwtErr) && jwtErr.Errors == jwt.ValidationErrorExpired {
 			return nil, nil, ErrTokenExpired
 		}
 		return nil, nil, err
@@ -87,6 +101,10 @@ func (s *AuthService) ValidateToken(accessToken string) (*models.User, *jwt.MapC
 	userID := int(claims["user_id"].(float64))
 	user, err := s.userRepo.GetByID(userID)
 	return user, &claims, nil
+}
+
+func (s *AuthService) getClaimsRequiredClaims(token jwt.Token) (*jwt.Claims, error) {
+	return nil, nil
 }
 
 func (s *AuthService) GetUserInfoByAuthCode(code string) (int, string, error) {
@@ -137,7 +155,7 @@ func (s *AuthService) SaveAuthCode(userID int, code, scope string) error {
 	return s.redisClient.Set(context.Background(), code, jsonData, expiry).Err()
 }
 
-func (s *AuthService) GenerateToken(userID int, scope string) (string, error) {
+func (s *AuthService) GenerateToken(userID int) (string, error) {
 
 	user, err := s.userRepo.GetByID(userID)
 	if err != nil {
@@ -150,25 +168,17 @@ func (s *AuthService) GenerateToken(userID int, scope string) (string, error) {
 		scopeMap[string(s)] = true
 	}
 
-	scopes := strings.Split(scope, " ")
-	for _, s := range scopes {
-		if !scopeMap[s] {
-			return "", fmt.Errorf("invalid scope: %s", s)
-		}
-	}
+	//scopes := strings.Split(scope, " ")
+	//for _, s := range scopes {
+	//	if !scopeMap[s] {
+	//		return "", fmt.Errorf("invalid scope: %s", s)
+	//	}
+	//}
 
 	claims := jwt.MapClaims{
 		"user_id": float64(userID),
-		"scope":   strings.Join(scopes, ","),
+		"name":    user.Username,
 		"exp":     time.Now().Add(time.Hour * 4).Unix(),
-	}
-
-	for _, s := range scopes {
-		switch s {
-		case "name":
-			claims["name"] = user.Username
-		}
-
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -179,17 +189,4 @@ func (s *AuthService) GenerateToken(userID int, scope string) (string, error) {
 	}
 
 	return tokenString, nil
-}
-
-func (s *AuthService) ExchangeToken(code string) (string, error) {
-	userID, scope, err := s.GetUserInfoByAuthCode(code)
-	if err != nil {
-		return "", errors.New("invalid code")
-	}
-
-	accessToken, err := s.GenerateToken(userID, scope)
-	if err != nil {
-		return "", errors.New("error generating token")
-	}
-	return accessToken, nil
 }

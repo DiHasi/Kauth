@@ -4,3 +4,8 @@ users:
     groups:
       - 'admins'
       - 'dev'
+  <USERNAME2>:
+    password: <PASSWORD> # docker run --rm -it johnstarich/bcrypt -P
+    groups:
+      - 'readonly'
+      - 'dev'

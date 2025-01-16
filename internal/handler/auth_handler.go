@@ -5,16 +5,22 @@ import (
 	"Kauth/internal/service"
 	"encoding/json"
 	"fmt"
+	"github.com/spf13/viper"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 )
 
 type AuthHandler struct {
-	authService *service.AuthService
+	authService      *service.AuthService
+	cookieEncryption *service.CookieEncryptionService
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *service.AuthService, cookieEncryption *service.CookieEncryptionService) *AuthHandler {
+	return &AuthHandler{authService: authService,
+		cookieEncryption: cookieEncryption}
 }
 
 type RegisterRequest struct {
@@ -22,40 +28,6 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 }
 
-// @Summary Register
-// @Description Register a new user
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param registerRequest body RegisterRequest true "Register request"
-// @Success 201 {string} string "Created"
-// @Router /api/register [post]
-func (h *AuthHandler) register(w http.ResponseWriter, r *http.Request) {
-	var req = new(RegisterRequest)
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	err := h.authService.Register(req.Username, req.Password)
-	if err != nil {
-		http.Error(w, "Failed to create user", http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusCreated)
-}
-
-// @Summary Login
-// @Description Login with username and password
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Param loginRequest body contracts.LoginRequest true "Login request"
-// @Success 200 {object} map[string]string
-// @Failure 400 {string} string "Invalid request"
-// @Router /api/login [post]
 func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 
 	var req = new(contracts.LoginRequest)
@@ -65,13 +37,28 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, err := h.authService.Login(req.Username, req.Password, req.Scope)
+	code, cookie, err := h.authService.Login(req.Username, req.Password, req.Scope)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// TODO: make response type
+	if code == "" {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		http.SetCookie(w, &http.Cookie{
+			Name:     "AuthCookie",
+			Value:    cookie,
+			Domain:   viper.GetString("forwardauth.domain"),
+			Expires:  time.Now().Add(1 * time.Hour),
+			Secure:   true,
+			HttpOnly: true,
+			Path:     "/",
+			SameSite: http.SameSiteNoneMode,
+		})
+		err = json.NewEncoder(w).Encode(map[string]string{})
+		return
+	}
+
 	err = json.NewEncoder(w).Encode(map[string]string{
 		"code": code,
 	})
@@ -81,22 +68,6 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *AuthHandler) refreshToken(w http.ResponseWriter, r *http.Request) {
-}
-
-// @Summary Authorize
-// @Description Authorize the user
-// @Tags oauth
-// @Accept json
-// @Produce json
-// @Param response_type query string true "Response type"
-// @Param client_id query string true "Client ID"
-// @Param redirect_uri query string true "Redirect URI"
-// @Param scope query string true "Scope"
-// @Param state query string true "State"
-// @Success 302 {string} string "Redirect"
-// @Failure 400 {string} string "Invalid request"
-// @Router /oauth/authorize [get]
 func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 	accessToken := r.Header.Get("Authorization")
 	if accessToken != "" {
@@ -104,7 +75,6 @@ func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "Token expired", http.StatusUnauthorized)
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(claims); err != nil {
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
@@ -126,19 +96,8 @@ func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/login?redirect_uri=%s&scope=%s&state=%s", redirectUri, scope, state), http.StatusFound)
 }
 
-// @Summary Get Token
-// @Description Get access and refresh tokens
-// @Tags oauth
-// @Accept json
-// @Produce json
-// @Param tokenRequest body contracts.TokenRequest true "Token request"
-// @Success 200 {object} map[string]string
-// @Failure 400 {string} string "Invalid request"
-// @Failure 401 {string} string "Unauthorized"
-// @Router /oauth/token [post]
 func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		log.Println("Form parse error:", err)
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
 	}
@@ -158,9 +117,8 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.authService.GenerateToken(userID, scope)
+	accessToken, err := h.authService.GenerateToken(userID)
 	if err != nil {
-		log.Println(err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -171,30 +129,106 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 		"scope":        scope,
 		"token_type":   "bearer",
 	}
+
 	err = json.NewEncoder(w).Encode(response)
 	if err != nil {
-		log.Println(err.Error())
 		return
 	}
 }
 
 func (h *AuthHandler) user(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Request: %s %s\n", r.Method, r.URL)
+
+	log.Println("Headers:")
+	for key, value := range r.Header {
+		log.Printf("%s: %v\n", key, value)
+	}
 
 	token := r.Header.Get("Authorization")
-	user, _, err := h.authService.ValidateToken(token)
+
+	log.Printf("Authorization Token: %s\n", token)
+
+	user, claims, err := h.authService.ValidateToken(token)
 	if err != nil {
-		log.Println(err.Error())
+		log.Printf("Error validating token: %v\n", err)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	err = json.NewEncoder(w).Encode(map[string]interface{}{
-		"name": user.ID,
-	})
+	log.Printf("User: %v\n", user)
+	log.Printf("Claims: %v\n", claims)
+
+	scope, ok := (*claims)["scope"].(string)
+	if !ok || scope == "" {
+		scope = ""
+	}
+	scopeFields := strings.Fields(scope)
+
+	log.Printf("Scope: %s\n", scope)
+
+	filteredFields, err := user.FilterFields(strings.Join(scopeFields, " "))
 	if err != nil {
-		log.Println(err.Error())
+		log.Printf("Error filtering fields: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("Filtered Fields: %v\n", filteredFields)
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(filteredFields)
+	if err != nil {
+		log.Printf("Error encoding response: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("Response sent successfully.")
 }
 
 func (h *AuthHandler) forwardAuth(w http.ResponseWriter, r *http.Request) {
+	authCookie, err := r.Cookie("AuthCookie")
+	if err != nil || authCookie.Value == "" {
+		originalProtocol := r.Header.Get("X-Forwarded-Proto")
+		if originalProtocol == "" {
+			originalProtocol = "http"
+		}
+
+		originalHost := r.Header.Get("X-Forwarded-Host")
+		if originalHost == "" {
+			originalHost = "localhost"
+		}
+
+		originalUrl := r.Header.Get("X-Forwarded-Uri")
+		if originalUrl == "" {
+			originalUrl = "/"
+		}
+
+		originalMethod := r.Header.Get("X-Forwarded-Method")
+		if originalMethod == "" {
+			originalMethod = "GET"
+		}
+
+		authUrl := viper.GetString("forwardauth.auth-url")
+		if authUrl == "" {
+			log.Fatal("forwardauth.auth-url is empty")
+		}
+		redirectUrl := fmt.Sprintf(
+			"%s?redirect_uri=%s://%s%s&method=%s",
+			authUrl,
+			url.QueryEscape(originalProtocol),
+			url.QueryEscape(originalHost),
+			url.QueryEscape(originalUrl),
+			url.QueryEscape(originalMethod),
+		)
+
+		http.Redirect(w, r, redirectUrl, http.StatusFound)
+		return
+	}
+
+	cookieData, err := h.cookieEncryption.Decrypt(authCookie.Value)
+	if err != nil || cookieData == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 }
