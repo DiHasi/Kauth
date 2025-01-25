@@ -2,6 +2,7 @@ package handler
 
 import (
 	"Kauth/internal/handler/contracts"
+	"Kauth/internal/models"
 	"Kauth/internal/service"
 	"encoding/json"
 	"fmt"
@@ -37,14 +38,23 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, cookie, err := h.authService.Login(req.Username, req.Password, req.Scope)
+	user, err := h.authService.Login(req.Username, req.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if code == "" {
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	if req.State == "" {
+		cookie, err := h.cookieEncryption.Encrypt(
+			map[string]string{
+				"username": user.Username,
+			})
+
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
 		http.SetCookie(w, &http.Cookie{
 			Name:     "AuthCookie",
 			Value:    cookie,
@@ -55,7 +65,21 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			SameSite: http.SameSiteLaxMode,
 		})
+		//w.Header().Set("Access-Control-Allow-Credentials", "true")
 		err = json.NewEncoder(w).Encode(map[string]string{})
+		return
+	}
+
+	code, err := h.authService.GenerateCode()
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	err = h.authService.SaveAuthCode(user.ID, code, req.Scope)
+
+	if err != nil {
+		log.Println(err)
 		return
 	}
 
@@ -71,13 +95,15 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 	accessToken := r.Header.Get("Authorization")
 	if accessToken != "" {
-		_, claims, err := h.authService.ValidateToken(accessToken)
+		err := h.authService.ValidateToken(accessToken)
 		if err != nil {
+			_ = h.authService.DeleteSession(accessToken)
 			http.Error(w, "Token expired", http.StatusUnauthorized)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(claims); err != nil {
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write([]byte("OK"))
+		if err != nil {
+			return
 		}
 		return
 	}
@@ -88,25 +114,23 @@ func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 	redirectUri := queryParams.Get("redirect_uri")
 	scope := queryParams.Get("scope")
 	state := queryParams.Get("state")
+	clientId := queryParams.Get("client_id")
 
 	if responseType != "code" {
 		http.Error(w, "Invalid response type", http.StatusInternalServerError)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/login?redirect_uri=%s&scope=%s&state=%s", redirectUri, scope, state), http.StatusFound)
+	http.Redirect(w, r, fmt.Sprintf("/login?redirect_uri=%s&scope=%s&state=%s&client_name=%s", redirectUri, scope, state, clientId), http.StatusFound)
 }
 
 func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Invalid form data", http.StatusBadRequest)
-		return
-	}
-
 	code := r.FormValue("code")
+	clientId := r.FormValue("client_id")
+	clientSecret := r.FormValue("client_secret")
 	grantType := r.FormValue("grant_type")
 	redirectURI := r.FormValue("redirect_uri")
 
-	if code == "" || grantType == "" || redirectURI == "" {
+	if code == "" || grantType == "" || redirectURI == "" || clientId == "" || clientSecret == "" {
 		http.Error(w, "Missing required parameters", http.StatusBadRequest)
 		return
 	}
@@ -120,6 +144,23 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 	accessToken, err := h.authService.GenerateToken(userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	err = h.authService.DeleteUserInfoByAuthCode(code)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	session := &models.Session{
+		UserID:      userID,
+		Scope:       scope,
+		RedirectURI: redirectURI,
+	}
+
+	err = h.authService.SaveSession(accessToken, session)
+	if err != nil {
 		return
 	}
 
@@ -137,34 +178,27 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) user(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Request: %s %s\n", r.Method, r.URL)
-
-	log.Println("Headers:")
-	for key, value := range r.Header {
-		log.Printf("%s: %v\n", key, value)
-	}
-
 	token := r.Header.Get("Authorization")
 
-	log.Printf("Authorization Token: %s\n", token)
-
-	user, claims, err := h.authService.ValidateToken(token)
+	err := h.authService.ValidateToken(token)
 	if err != nil {
 		log.Printf("Error validating token: %v\n", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	log.Printf("User: %v\n", user)
-	log.Printf("Claims: %v\n", claims)
-
-	scope, ok := (*claims)["scope"].(string)
-	if !ok || scope == "" {
-		scope = ""
+	accessToken := strings.TrimPrefix(token, "Bearer ")
+	session, err := h.authService.GetSession(accessToken)
+	if err != nil {
+		return
 	}
-	scopeFields := strings.Fields(scope)
 
-	log.Printf("Scope: %s\n", scope)
+	scopeFields := strings.Fields(session.Scope)
+
+	user, err := h.authService.GetUserById(session.UserID)
+	if err != nil {
+		return
+	}
 
 	filteredFields, err := user.FilterFields(strings.Join(scopeFields, " "))
 	if err != nil {
@@ -173,8 +207,6 @@ func (h *AuthHandler) user(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Filtered Fields: %v\n", filteredFields)
-
 	w.Header().Set("Content-Type", "application/json")
 	err = json.NewEncoder(w).Encode(filteredFields)
 	if err != nil {
@@ -182,8 +214,6 @@ func (h *AuthHandler) user(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	log.Println("Response sent successfully.")
 }
 
 func (h *AuthHandler) forwardAuth(w http.ResponseWriter, r *http.Request) {

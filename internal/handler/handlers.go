@@ -23,7 +23,7 @@ func (h *Handlers) InitRoutes() *mux.Router {
 	r.HandleFunc("/api/login", h.authHandler.login).Methods("POST")
 
 	r.HandleFunc("/oauth/authorize", h.authHandler.authorize).Methods("GET")
-	r.HandleFunc("/oauth/user", h.authHandler.authorize).Methods("GET")
+	r.HandleFunc("/oauth/user", h.authHandler.user).Methods("GET")
 	r.HandleFunc("/oauth/token", h.authHandler.token).Methods("POST")
 	r.HandleFunc("/forward-auth/auth", h.authHandler.forwardAuth).Methods("GET")
 

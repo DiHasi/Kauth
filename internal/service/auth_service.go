@@ -29,64 +29,35 @@ func NewAuthService(userRepo repository.UserRepository, redisClient *redis.Clien
 
 var ErrTokenExpired = errors.New("token expired")
 
-func (s *AuthService) Login(username, password, scope string) (string, string, error) {
+func (s *AuthService) Login(username, password string) (*models.User, error) {
 	user, err := s.userRepo.GetByUsername(username)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	if scope == "" {
-		cookie, err := s.cookieEncryption.Encrypt(
-			map[string]string{
-				username: user.Username,
-			})
-
-		if err != nil {
-			return "", "", err
-		}
-		return "", cookie, nil
-	}
-
-	code, err := s.GenerateCode()
-	if err != nil {
-		return "", "", err
-	}
-
-	err = s.SaveAuthCode(user.ID, code, scope)
-	if err != nil {
-		return "", "", err
-	}
-
-	return code, "", nil
+	return user, nil
 }
 
-func (s *AuthService) ValidateToken(accessToken string) (*models.User, *jwt.MapClaims, error) {
+func (s *AuthService) ValidateToken(accessToken string) error {
 	accessToken = strings.TrimPrefix(accessToken, "Bearer ")
 
-	token, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
+	_, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
 		return []byte(s.secretKey), nil
 	})
 	if err != nil {
 		var jwtErr *jwt.ValidationError
 		if errors.As(err, &jwtErr) && jwtErr.Errors == jwt.ValidationErrorExpired {
-			return nil, nil, ErrTokenExpired
+			return ErrTokenExpired
 		}
-		return nil, nil, err
+		return err
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok || !token.Valid {
-		return nil, nil, errors.New("invalid token")
-	}
-
-	userID := int(claims["user_id"].(float64))
-	user, err := s.userRepo.GetByID(userID)
-	return user, &claims, nil
+	return nil
 }
 
 func (s *AuthService) GetUserInfoByAuthCode(code string) (int, string, error) {
@@ -97,20 +68,28 @@ func (s *AuthService) GetUserInfoByAuthCode(code string) (int, string, error) {
 
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonData), &data); err != nil {
-		return 0, "", fmt.Errorf("ошибка десериализации данных: %w", err)
+		return 0, "", err
 	}
 
 	userID, ok := data["user_id"].(float64)
 	if !ok {
-		return 0, "", errors.New("неверный формат user_id")
+		return 0, "", err
 	}
 
 	scope, ok := data["scope"].(string)
 	if !ok {
-		return 0, "", errors.New("неверный формат scope")
+		return 0, "", err
 	}
 
 	return int(userID), scope, nil
+}
+
+func (s *AuthService) DeleteUserInfoByAuthCode(code string) error {
+	err := s.redisClient.Del(context.Background(), code).Err()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *AuthService) GenerateCode() (string, error) {
@@ -171,4 +150,48 @@ func (s *AuthService) GenerateToken(userID int) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+func (s *AuthService) GetUserById(id int) (*models.User, error) {
+	user, err := s.userRepo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *AuthService) SaveSession(accessToken string, session *models.Session) error {
+	data, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+
+	err = s.redisClient.Set(context.Background(), accessToken, data, time.Hour*4).Err()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *AuthService) GetSession(accessToken string) (*models.Session, error) {
+	data, err := s.redisClient.Get(context.Background(), accessToken).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	var session models.Session
+	err = json.Unmarshal([]byte(data), &session)
+	if err != nil {
+		return nil, err
+	}
+
+	return &session, nil
+}
+
+func (s *AuthService) DeleteSession(accessToken string) error {
+	return s.redisClient.Del(context.Background(), accessToken).Err()
 }

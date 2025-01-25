@@ -7,7 +7,7 @@ import (
 )
 
 type User struct {
-	ID       int      `db:"id" json:"user_id" scope:"user_id"`
+	ID       int      `db:"id" json:"id" scope:"id"`
 	Username string   `db:"username" json:"name" scope:"name"`
 	Password string   `db:"password" json:"password"`
 	Groups   []string `db:"groups" scope:"groups"`
