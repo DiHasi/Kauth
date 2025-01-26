@@ -112,6 +112,11 @@ and use it to request an access token.
    SECRET_KEY=<A 32-character base64 string>
    ```
 
+5. Run **docker compose**:
+
+   ```bash
+   docker compose up -d
+   ```
 ---
 
 ## Examples
