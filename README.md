@@ -14,7 +14,7 @@ and use it to request an access token.
     ```yml
     services:
       api:
-        image: dihasi/kauth
+        image: dihasi/kauth:v1
         container_name: api
         env_file:
           - .env
