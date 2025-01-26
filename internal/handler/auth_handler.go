@@ -65,7 +65,6 @@ func (h *AuthHandler) login(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			SameSite: http.SameSiteLaxMode,
 		})
-		//w.Header().Set("Access-Control-Allow-Credentials", "true")
 		err = json.NewEncoder(w).Encode(map[string]string{})
 		return
 	}
@@ -120,7 +119,13 @@ func (h *AuthHandler) authorize(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid response type", http.StatusInternalServerError)
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/login?redirect_uri=%s&scope=%s&state=%s&client_name=%s", redirectUri, scope, state, clientId), http.StatusFound)
+	clientName, err := h.authService.GetClientName(clientId)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/login?redirect_uri=%s&scope=%s&state=%s&client_name=%s", redirectUri, scope, state, clientName), http.StatusFound)
 }
 
 func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
@@ -141,7 +146,14 @@ func (h *AuthHandler) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := h.authService.GenerateToken(userID)
+	_, err = h.authService.VerifyOAuthClient(clientId, clientSecret, redirectURI)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	accessToken, err := h.authService.GenerateToken()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

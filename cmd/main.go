@@ -59,6 +59,10 @@ func main() {
 		log.Fatal("Failed to initialize users:", err)
 	}
 
+	if err := configService.InitOAuthClients(); err != nil {
+		log.Fatal("Failed to initialize users:", err)
+	}
+
 	redisClient := redis.NewClient(&redis.Options{
 		Addr: fmt.Sprintf("%s:%s", os.Getenv("REDIS_HOST"), os.Getenv("REDIS_PORT")),
 	})
@@ -76,12 +80,13 @@ func main() {
 	}
 
 	userRepo := repository.NewUserRepository(db)
+	oauthRepo := repository.NewOAuthClientRepository(db)
 
 	cookieEncryptionService, err := service.NewCookieEncryptionService(secretKey)
 	if err != nil {
 		log.Fatal(err)
 	}
-	authService := service.NewAuthService(userRepo, redisClient, cookieEncryptionService, secretKey)
+	authService := service.NewAuthService(userRepo, oauthRepo, redisClient, cookieEncryptionService, secretKey)
 	authHandler := handler.NewAuthHandler(authService, cookieEncryptionService)
 	staticHandler := handler.NewStaticHandler(staticDir)
 	handlers := handler.NewHandler(authHandler, staticHandler)

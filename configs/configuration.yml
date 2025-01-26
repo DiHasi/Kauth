@@ -1,3 +1,10 @@
+oauth:
+  clients:
+    Portainer:
+      client_id: "a798435832f794f0c994d7efc8ce2e0854d250af"
+      homepageURL: "https://portainer.dihasi.ru/"
+      client_secret: "$2a$12$h1V0BSFWzyyGvSoLqtlOK.bufVPdf5LZRqsWixDNzNaflFa67Thgq"
+
 forwardauth:
-  auth-url: "https://auth.dihasi.ru/api/login"
+  auth-url: "https://auth.dihasi.ru/login"
   domain: ".dihasi.ru"

@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-redis/redis/v8"
 	"golang.org/x/crypto/bcrypt"
@@ -18,13 +17,26 @@ import (
 
 type AuthService struct {
 	userRepo         repository.UserRepository
+	oauthRepo        repository.OAuthClientRepository
 	redisClient      *redis.Client
 	cookieEncryption *CookieEncryptionService
 	secretKey        string
 }
 
-func NewAuthService(userRepo repository.UserRepository, redisClient *redis.Client, cookieEncryption *CookieEncryptionService, secretKey string) *AuthService {
-	return &AuthService{userRepo: userRepo, redisClient: redisClient, cookieEncryption: cookieEncryption, secretKey: secretKey}
+func NewAuthService(
+	userRepo repository.UserRepository,
+	oauthRepo repository.OAuthClientRepository,
+	redisClient *redis.Client,
+	cookieEncryption *CookieEncryptionService,
+	secretKey string,
+) *AuthService {
+	return &AuthService{
+		userRepo:         userRepo,
+		oauthRepo:        oauthRepo,
+		redisClient:      redisClient,
+		cookieEncryption: cookieEncryption,
+		secretKey:        secretKey,
+	}
 }
 
 var ErrTokenExpired = errors.New("token expired")
@@ -116,30 +128,16 @@ func (s *AuthService) SaveAuthCode(userID int, code, scope string) error {
 	return s.redisClient.Set(context.Background(), code, jsonData, expiry).Err()
 }
 
-func (s *AuthService) GenerateToken(userID int) (string, error) {
-
-	user, err := s.userRepo.GetByID(userID)
-	if err != nil {
-		return "", fmt.Errorf("user not found: %v", err)
-	}
-
+func (s *AuthService) GenerateToken() (string, error) {
 	validScopes := models.GetAllScopes()
 	scopeMap := make(map[string]bool)
 	for _, s := range validScopes {
 		scopeMap[string(s)] = true
 	}
 
-	//scopes := strings.Split(scope, " ")
-	//for _, s := range scopes {
-	//	if !scopeMap[s] {
-	//		return "", fmt.Errorf("invalid scope: %s", s)
-	//	}
-	//}
-
 	claims := jwt.MapClaims{
-		"user_id": float64(userID),
-		"name":    user.Username,
-		"exp":     time.Now().Add(time.Hour * 4).Unix(),
+		"iss": "Kauth",
+		"exp": time.Now().Add(time.Hour * 4).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -159,6 +157,35 @@ func (s *AuthService) GetUserById(id int) (*models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *AuthService) GetClientName(clientId string) (string, error) {
+	client, err := s.oauthRepo.GetByClientID(clientId)
+	if err != nil {
+		return "", err
+	}
+
+	return client.Name, nil
+}
+
+func (s *AuthService) VerifyOAuthClient(clientId, clientSecret, homepageUrl string) (bool, error) {
+	client, err := s.oauthRepo.GetByClientID(clientId)
+
+	if err != nil {
+		return false, err
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(client.ClientSecret), []byte(clientSecret))
+
+	if err != nil {
+		return false, errors.New("wrong client_secret")
+	}
+
+	if client.HomepageURL != homepageUrl {
+		return false, errors.New("wrong homepageUrl")
+	}
+
+	return true, nil
 }
 
 func (s *AuthService) SaveSession(accessToken string, session *models.Session) error {

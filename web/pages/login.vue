@@ -10,7 +10,7 @@ const password = ref<string>('');
 const scope = ref<string>(route.query.scope as string || '');
 const state = ref<string>(route.query.state as string || '');
 const redirect_uri = ref<string>(route.query.redirect_uri as string || '');
-const cookie = ref<string>(route.query.cookie as string || '');
+const client_name = ref<string>(route.query.client_name as string || '');
 
 // Состояние ошибки
 const errorMessage = ref<string>('');
@@ -18,7 +18,13 @@ const visible = ref<boolean>(false);
 const domain = ref<string>('')
 
 onMounted(() => {
-  domain.value = getDomainFromUrl(redirect_uri.value);
+
+  if (client_name.value != '') {
+    domain.value = client_name.value
+  } else {
+    domain.value = getDomainFromUrl(redirect_uri.value);
+  }
+  
   useHead({
     title: `Login - ${domain.value}`
   });
@@ -73,7 +79,7 @@ const login = async () => {
       return;
     }
 
-    if(scope.value === "") {
+    if (scope.value === "") {
       window.location.href = `${redirect_uri.value}`;
     }
 

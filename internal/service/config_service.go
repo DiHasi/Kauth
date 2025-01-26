@@ -86,3 +86,33 @@ func (s *ConfigService) InitUsers() error {
 
 	return nil
 }
+
+func (s *ConfigService) InitOAuthClients() error {
+	_, err := s.db.Exec("DELETE FROM oauth_clients")
+	if err != nil {
+		return fmt.Errorf("failed to delete oauth clients: %w", err)
+	}
+
+	_, err = s.db.Exec("ALTER SEQUENCE oauth_clients_id_seq RESTART WITH 1")
+	if err != nil {
+		return fmt.Errorf("failed to reset oauth clients sequence: %w", err)
+	}
+
+	clients := viper.GetStringMap("oauth.clients")
+	for name, clientData := range clients {
+		clientMap := clientData.(map[string]interface{})
+		clientID := clientMap["client_id"].(string)
+		clientSecret := clientMap["client_secret"].(string)
+		homepageURL := clientMap["homepageurl"].(string)
+
+		_, err := s.db.Exec(
+			"INSERT INTO oauth_clients (name, client_id, client_secret, homepage_url) VALUES ($1, $2, $3, $4)",
+			name, clientID, clientSecret, homepageURL,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to insert oauth client %s: %w", name, err)
+		}
+	}
+
+	return nil
+}

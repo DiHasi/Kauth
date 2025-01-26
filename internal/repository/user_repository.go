@@ -8,7 +8,6 @@ import (
 type UserRepository interface {
 	GetByID(id int) (*models.User, error)
 	GetByUsername(username string) (*models.User, error)
-	Create(user *models.User) error
 }
 
 type userRepository struct {
@@ -33,9 +32,4 @@ func (r *userRepository) GetByUsername(username string) (*models.User, error) {
 		return nil, err
 	}
 	return &user, nil
-}
-
-func (r *userRepository) Create(user *models.User) error {
-	_, err := r.db.NamedExec("INSERT INTO users (username, password) VALUES (:username, :password)", user)
-	return err
 }
