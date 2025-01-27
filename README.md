@@ -31,8 +31,6 @@ and use it to request an access token.
       postgres:
         image: postgres
         container_name: postgres
-        ports:
-          - 54327:5432
         environment:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
