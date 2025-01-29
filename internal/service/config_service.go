@@ -45,9 +45,11 @@ func (s *ConfigService) InitUsers() error {
 	roleSet := make(map[string]struct{})
 	for _, userData := range users {
 		userMap := userData.(map[string]interface{})
-		groups := userMap["groups"].([]interface{})
-		for _, group := range groups {
-			roleSet[group.(string)] = struct{}{}
+		groups, ok := userMap["groups"].([]interface{})
+		if ok {
+			for _, group := range groups {
+				roleSet[group.(string)] = struct{}{}
+			}
 		}
 	}
 
