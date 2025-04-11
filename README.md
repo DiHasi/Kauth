@@ -107,7 +107,7 @@ and use it to request an access token.
    REDIS_HOST=redis
    REDIS_PORT=6379
    
-   SECRET_KEY=<A 32-character base64 string>
+   SECRET_KEY=<A 32-byte ASCII string>
    ```
 
 5. Run **docker compose**:
