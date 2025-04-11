@@ -17,6 +17,9 @@ const errorMessage = ref<string>('');
 const visible = ref<boolean>(false);
 const domain = ref<string>('')
 
+const showLogin = ref(false);
+
+
 onMounted(() => {
 
   if (client_name.value != '') {
@@ -28,6 +31,10 @@ onMounted(() => {
   useHead({
     title: `Login - ${domain.value}`
   });
+
+  setTimeout(() => {
+    showLogin.value = true;
+  }, 50);
 });
 
 // Показываем сообщение об ошибке
@@ -98,19 +105,28 @@ const login = async () => {
   </div>
 
   <!-- Форма авторизации -->
-  <div
-      class="flex flex-col h-full *:w-full p-4 sm:p-0 *:sm:w-1/2 *:md:w-1/2 *:lg:w-1/4 justify-center items-center gap-6">
-    <div class="text-center text-2xl">Login</div>
-    <FloatLabel>
-      <InputText id="username" v-model="username" class="w-full"/>
-      <label for="username">Username</label>
+  <transition
+      enter-active-class="transition duration-500 ease-out"
+      enter-from-class="opacity-0 scale-0"
+      enter-to-class="opacity-100 scale-100"
+  >
+    <div
+        v-if="showLogin"
+        class="flex flex-col h-full *:w-full p-4 sm:p-0 *:sm:w-1/2 *:md:w-1/2 *:lg:w-1/4 justify-center items-center gap-6">
+      <div class="text-center text-2xl">Login</div>
+      <FloatLabel>
+        <InputText id="username" v-model="username" class="w-full"/>
+        <label for="username">Username</label>
 
-    </FloatLabel>
-    <FloatLabel class="*:w-full">
-      <Password class="*:w-full" v-model="password" :feedback="false" inputId="password"/>
-      <label class="w-full" for="password">Password</label>
+      </FloatLabel>
+      <FloatLabel class="*:w-full">
+        <Password class="*:w-full" v-model="password" :feedback="false" inputId="password"/>
+        <label class="w-full" for="password">Password</label>
 
-    </FloatLabel>
-    <Button label="Login" @click="login"/>
-  </div>
+      </FloatLabel>
+      <Button label="Login" @click="login"/>
+    </div>
+  </transition>
+
+
 </template>
